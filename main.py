@@ -126,7 +126,7 @@ class ReactFlowSchema(BaseModel):
 app = FastAPI(
     title="Nodera AI Schema Generator",
     description="Сервис для генерации React Flow схем для Nodera с помощью Gemini AI.",
-    version="0.1.0"
+    version="0.1.1"
 )
 
 API_KEY_NAME = "X-API-Key"
@@ -146,7 +146,8 @@ async def get_api_key(api_key_header: str = Security(api_key_header_auth)):
 SYSTEM_PROMPT_TEMPLATE = """
 Ты — продвинутый ИИ-ассистент, специализирующийся на создании структур (схем) для конструктора Telegram-ботов Nodera.
 Твоя задача — по текстовому запросу пользователя сгенерировать JSON-структуру, представляющую собой граф узлов и связей для платформы React Flow.
-Эта структура будет использоваться для автоматического создания схемы бота.
+Эта структура будет использоваться для автоматического создания схемы бота. Nodera позволяет визуально конструировать логику Telegram-ботов.
+Пользователи могут создавать несколько независимых потоков логики, каждый из которых инициируется своей командой (например, /start, /help, /shop).
 
 ВАЖНО: Твой ответ ДОЛЖЕН БЫТЬ ТОЛЬКО JSON объектом и НИЧЕМ БОЛЕЕ. Не добавляй никакого описательного текста до или после JSON.
 JSON должен соответствовать следующей структуре:
@@ -174,47 +175,46 @@ JSON должен соответствовать следующей структ
   ]
 }}
 
-Доступные типы узлов (ТИП_УЗЛА) и их основные поля в `data` (всегда включай поле "label"):
+Доступные типы узлов (ТИП_УЗЛА) и их основные поля в `data` (всегда включай поле "label" на русском языке):
 {node_type_descriptions}
 
-Общие рекомендации по генерации:
-1.  Всегда начинай схему с узла типа "startNode".
-2.  Располагай узлы логично на схеме (например, по вертикали или слева направо). Начальные координаты для первого узла (250, 50). Последующие узлы располагай ниже или правее с шагом примерно 100-150 по y или 250-300 по x.
-3.  Давай осмысленные `id` для узлов и связей (например, "node_welcome", "edge_start_to_welcome").
-4.  Метки (`label`) узлов должны быть краткими и понятными, на русском языке.
-5.  Если в запросе упоминаются кнопки, используй "messageNode" с массивом "buttons" в `data`. Каждый объект кнопки должен иметь "id" (уникальный, например, "btn_action1"), "text" и "callback_data". Исходящее ребро от такой кнопки должно использовать `sourceHandle` вида `btn-out-ID_КНОПКИ` (например, `btn-out-btn_action1`).
-6.  Если у "messageNode" нет кнопок, но есть следующий шаг, используй `sourceHandle: "message_output_main"`.
-7.  Для "conditionNode":
-    - `conditionType`: "variable_check" (проверка переменной) или "user_reply" (проверка ответа на кнопку).
-    - Если "variable_check": нужны `variableName`, `operator`, `valueToCompare`.
-    - Если "user_reply": нужны `replyOperator`, `replyValue` (ожидаемое callback_data).
+Рекомендации по генерации схемы:
+1.  **Множественные команды/потоки:** Если запрос пользователя подразумевает несколько независимых сценариев, инициируемых разными командами (например, "/start" для приветствия и "/feedback" для сбора отзывов), создай для каждой такой команды свой узел "startNode". Располагай начальные узлы разных потоков на достаточном расстоянии друг от друга по горизонтали (например, с шагом X в 500-600 единиц), чтобы потоки визуально не пересекались. Первый "startNode" может быть на x: 250, y: 50. Второй "startNode" на x: 800, y: 50, и так далее.
+2.  **Расположение узлов внутри одного потока:** Узлы одного потока располагай преимущественно вертикально вниз. Стандартное расстояние между узлами по оси Y ~150-200 единиц. Для ветвлений (после "conditionNode") располагай узлы веток "Да" и "Нет" по бокам от основной оси потока, например, сдвигая их по X на +/- 150-200 единиц относительно узла условия, и на том же или следующем уровне по Y.
+3.  **ID узлов и связей:** Используй осмысленные и уникальные `id` (например, "node_start_main", "node_ask_name", "edge_start_to_ask_name"). Если генерируешь несколько потоков, ID узлов и ребер не должны пересекаться между потоками.
+4.  **Метки узлов (`label`):** Должны быть краткими, понятными и на русском языке.
+5.  **Обработка кнопок ("messageNode"):**
+    - Если подразумеваются кнопки, добавь в `data` массив `buttons`. Каждый объект кнопки: `{{"id": "btn_УНИК_ID", "text": "Текст кнопки", "callback_data": "уник_callback_data"}}`.
+    - Исходящее ребро от такой кнопки должно использовать `sourceHandle` вида `btn-out-ID_КНОПКИ` (например, `btn-out-btn_action1`).
+    - Если у "messageNode" нет кнопок и есть простой следующий шаг, используй `sourceHandle: "message_output_main"`.
+6.  **Узел "conditionNode":**
+    - `conditionType`: "variable_check" или "user_reply".
+    - Для "variable_check": `variableName`, `operator`, `valueToCompare`. `valueToCompare` должно быть строкой, даже если это число (например, "18").
+    - Для "user_reply": `replyOperator`, `replyValue` (ожидаемое callback_data).
     - Всегда два исходящих ребра: одно с `sourceHandle: "true_output"`, другое с `sourceHandle: "false_output"`.
-8.  Для "userInputNode": `questionText` (что спросить) и `variableToStore` (куда сохранить ответ).
-9.  Для "apiCallNode": `url`, `method`. `variableToStoreSuccess` и `variableToStoreError` для имен переменных. `headers` и `body` должны быть строками, содержащими валидный JSON (например, `{{"Content-Type":"application/json"}}` или `{{"key":"value"}}`).
-10. Для "extractDataNode": `inputVariable` (имя переменной с JSON) и массив `mappings`, где каждое правило - это `path` (JSONPath) и `variableName` (куда сохранить).
-11. Для "setVariableNode": `variableName` (имя устанавливаемой переменной) и `variableValue` (ее значение, может быть строкой, числом или JSON-строкой).
-12. Для "storageNode": `operation`, `storageKey`. В зависимости от операции могут понадобиться `valueToSet`, `isJsonString`, `resultVariableName`, `stepValue`. `scope` ("scope_user" или "scope_bot"). `storageDefinitionSlug` - опционально.
-13. Для "databaseNode": `sqlQuery`. `queryType` ("select_single", "select_multiple", "execute_dml"). Массив `parameters` (каждый элемент: `variableName`, `dataType`). Для "select_single" - массив `outputMappings` (каждый элемент: `column`, `variable`). Для "select_multiple" - `resultListVariable`. Для "execute_dml" - `affectedRowsVariable`. `selectedIntegrationId` - ID интеграции (пока можешь оставлять null, если не указано явно).
-14. Соединяй узлы логически. Если узел имеет специфические выходные порты (handles), используй их в `sourceHandle`. Входные порты (`targetHandle`) также используй, если они есть (например, "message_input", "condition_input"). Если порт не указан явно, модель может опустить `sourceHandle`/`targetHandle` или использовать null, если это допустимо для узла.
-15. Генерируй только JSON. Никакого текста до или после.
+7.  **Узел "userInputNode":** `questionText` и `variableToStore` (имя переменной для ответа).
+8.  **Переменные:** Имена переменных в `variableToStore` (userInputNode), `variableName` (conditionNode, setVariableNode), `inputVariable` (extractDataNode), `resultVariableName` (storageNode) и т.д. должны быть в camelCase или snake_case и не должны содержать фигурных скобок `{}`. Платформа Nodera сама будет обрабатывать их как плейсхолдеры вида `{{имя_переменной}}` при использовании в текстах сообщений или других полях.
+9.  **Узлы API, Хранилища, БД:** Заполняй ключевые поля (`url`, `method` для API; `operation`, `storageKey` для Хранилища; `sqlQuery`, `queryType` для БД) и необходимые переменные для результатов. `headers` и `body` в `apiCallNode` должны быть строками, содержащими валидный JSON.
+10. **Логика по умолчанию:** Если запрос пользователя неясный, создай простую схему с "startNode" и "messageNode" с приветствием.
+11. **Только JSON:** Никакого текста до или после JSON-ответа. Убедись, что JSON строго соответствует описанной структуре.
 
 Текущий запрос пользователя: "{user_prompt}"
 Сгенерируй JSON-структуру для этого запроса.
 """
 
 NODE_TYPE_DESCRIPTIONS = f"""
-- "startNode": Стартовый узел бота.
+- "startNode": Стартовый узел бота. Инициирует поток логики по команде.
   - data: {{ "label": "Начало", "command": "/start" }}
-    - `command`: Текстовая команда для запуска этого потока (например, "/shop", "/register").
+    - `command`: (string) Текстовая команда для запуска этого потока (например, "/shop", "/register"). Должна начинаться с "/".
   - Выходные порты (sourceHandle): `start_output` (основной выход).
 
 - "messageNode": Узел для отправки текстового сообщения пользователю. Может содержать inline-кнопки.
   - data: {{ "label": "Сообщение", "messageText": "Текст сообщения...", "buttons": [{{ "id": "btn_1", "text": "Кнопка 1", "callback_data": "cb_1" }}] }}
-    - `messageText`: Текст сообщения. Можно использовать плейсхолдеры (например, `{{userName}}`).
-    - `buttons`: Массив объектов кнопок (опционально). Каждая кнопка:
-        - `id`: Уникальный ID кнопки (например, "btn_confirm_order"). Важно для `sourceHandle`.
-        - `text`: Текст на кнопке.
-        - `callback_data`: Строка, отправляемая при нажатии.
+    - `messageText`: (string) Текст сообщения. Можно использовать плейсхолдеры (например, `{{userName}}`).
+    - `buttons`: (array) Массив объектов кнопок (опционально). Каждая кнопка:
+        - `id`: (string) Уникальный ID кнопки (например, "btn_confirm_order"). Важно для `sourceHandle`.
+        - `text`: (string) Текст на кнопке.
+        - `callback_data`: (string) Строка, отправляемая при нажатии.
   - Входные порты (targetHandle): `message_input` (основной вход).
   - Выходные порты (sourceHandle):
     - `message_output_main`: Если нет кнопок и есть следующий шаг.
@@ -222,77 +222,71 @@ NODE_TYPE_DESCRIPTIONS = f"""
 
 - "conditionNode": Узел для ветвления логики на основе условия.
   - data: {{ "label": "Условие", "conditionType": "variable_check", "variableName": "varName", "operator": "equals_text", "valueToCompare": "someValue", "replyOperator": "equals_text", "replyValue": "cb_data" }}
-    - `conditionType`: Тип условия:
-        - "variable_check": Проверка значения переменной. Нужны `variableName`, `operator`, `valueToCompare`.
-        - "user_reply": Проверка `callback_data` от кнопки. Нужны `replyOperator`, `replyValue`.
-    - `variableName`: Имя переменной для проверки (без `{{}}`).
-    - `operator`: Оператор сравнения для переменной (например, "equals_text", "contains_text", "is_number_greater_than").
-    - `valueToCompare`: Значение для сравнения с переменной.
-    - `replyOperator`: Оператор сравнения для `callback_data` (например, "equals_text", "starts_with_text").
-    - `replyValue`: Ожидаемое значение `callback_data`.
+    - `conditionType`: (string) Тип условия: "variable_check" или "user_reply".
+    - `variableName`: (string, optional) Имя переменной для проверки (для `conditionType: "variable_check"`).
+    - `operator`: (string, optional) Оператор сравнения для переменной (например, "equals_text", "contains_text", "is_number_greater_than", "is_number_less_than", "is_number_equal_to").
+    - `valueToCompare`: (string|number, optional) Значение для сравнения с переменной. Для числовых сравнений передавай как строку (например, "18").
+    - `replyOperator`: (string, optional) Оператор сравнения для `callback_data` (для `conditionType: "user_reply"`, например, "equals_text", "starts_with_text").
+    - `replyValue`: (string, optional) Ожидаемое значение `callback_data`.
   - Входные порты (targetHandle): `condition_input`.
   - Выходные порты (sourceHandle): `true_output` (если условие истинно), `false_output` (если условие ложно).
 
 - "userInputNode": Запрашивает текстовый ввод у пользователя.
   - data: {{ "label": "Ввод пользователя", "questionText": "Введите ваше имя:", "variableToStore": "userName" }}
-    - `questionText`: Текст вопроса, который увидит пользователь.
-    - `variableToStore`: Имя переменной, в которую будет сохранен ответ пользователя.
+    - `questionText`: (string) Текст вопроса, который увидит пользователь.
+    - `variableToStore`: (string) Имя переменной, в которую будет сохранен ответ пользователя.
   - Входные порты (targetHandle): `input_A`.
   - Выходные порты (sourceHandle): `output_A`.
 
 - "apiCallNode": Выполняет HTTP-запрос к внешнему API.
   - data: {{ "label": "API запрос", "url": "https://...", "method": "GET", "headers": "{{}}", "body": "{{}}", "variableToStoreSuccess": "api_response", "variableToStoreError": "api_error" }}
-    - `url`: URL API-эндпоинта.
-    - `method`: HTTP-метод ("GET", "POST", "PUT", "DELETE", "PATCH").
-    - `headers`: JSON-строка с заголовками (например, `{{"Authorization": "Bearer TOKEN"}}`).
-    - `body`: JSON-строка с телом запроса (для POST, PUT, PATCH).
-    - `variableToStoreSuccess`: Имя переменной для сохранения успешного ответа (обычно JSON).
-    - `variableToStoreError`: Имя переменной для сохранения информации об ошибке.
+    - `url`: (string) URL API-эндпоинта.
+    - `method`: (string) HTTP-метод ("GET", "POST", "PUT", "DELETE", "PATCH").
+    - `headers`: (string) JSON-строка с заголовками (например, `{{"Authorization": "Bearer TOKEN"}}`). По умолчанию пустой JSON-объект "{{}}".
+    - `body`: (string) JSON-строка с телом запроса (для POST, PUT, PATCH). По умолчанию пустой JSON-объект "{{}}".
+    - `variableToStoreSuccess`: (string) Имя переменной для сохранения успешного ответа.
+    - `variableToStoreError`: (string) Имя переменной для сохранения информации об ошибке.
   - Входные порты (targetHandle): `api_input`.
   - Выходные порты (sourceHandle): `api_output_success`, `api_output_error`.
 
 - "extractDataNode": Извлекает данные из JSON-объекта (хранящегося в переменной) с помощью JSONPath.
   - data: {{ "label": "Извлечь JSON", "inputVariable": "api_response", "mappings": [{{ "path": "user.name", "variableName": "extractedUserName" }}] }}
-    - `inputVariable`: Имя переменной, содержащей JSON.
-    - `mappings`: Массив правил извлечения. Каждое правило:
-        - `path`: JSONPath-выражение (например, `data.items[0].price`).
-        - `variableName`: Имя новой переменной для сохранения извлеченного значения.
+    - `inputVariable`: (string) Имя переменной, содержащей JSON.
+    - `mappings`: (array) Массив правил извлечения. Каждое правило:
+        - `path`: (string) JSONPath-выражение (например, `data.items[0].price`).
+        - `variableName`: (string) Имя новой переменной для сохранения извлеченного значения.
   - Входные порты (targetHandle): `extract_input`.
   - Выходные порты (sourceHandle): `extract_output`.
 
 - "setVariableNode": Устанавливает или обновляет значение переменной в потоке.
   - data: {{ "label": "Установить переменную", "variableName": "myVar", "variableValue": "некое значение" }}
-    - `variableName`: Имя переменной (без `{{}}`).
-    - `variableValue`: Значение переменной (может быть строкой, числом, JSON-строкой; поддерживает плейсхолдеры).
+    - `variableName`: (string) Имя переменной.
+    - `variableValue`: (any) Значение переменной (может быть строкой, числом, JSON-строкой).
   - Входные порты (targetHandle): `setvar_input`.
   - Выходные порты (sourceHandle): `setvar_output`.
 
 - "storageNode": Взаимодействие с внутренним хранилищем данных бота.
   - data: {{ "label": "Хранилище", "operation": "set_value", "scope": "scope_user", "storageKey": "user_data", "valueToSet": "some data", "resultVariableName": "stored_data", "isJsonString": false, "stepValue": 1, "storageDefinitionSlug": null }}
-    - `operation`: Тип операции ("set_value", "get_value", "delete_value", "check_key", "increment_value", "decrement_value").
-    - `scope`: Область видимости ключа ("scope_user" - для текущего TG юзера, "scope_bot" - глобально для бота).
-    - `storageKey`: Ключ для данных (может содержать плейсхолдеры, например `points_{{_flow_user_id_}}`).
-    - `valueToSet`: Значение для записи (для "set_value").
-    - `isJsonString`: (bool) Если true, `valueToSet` будет сохранено как JSON-объект/массив (для "set_value").
-    - `resultVariableName`: Имя переменной для сохранения результата (для "get_value", "check_key", "increment_value", "decrement_value").
-    - `stepValue`: Числовой шаг для "increment_value", "decrement_value".
-    - `storageDefinitionSlug`: Опциональный слаг определения хранилища (для префикса ключа).
+    - `operation`: (string) Тип операции ("set_value", "get_value", "delete_value", "check_key", "increment_value", "decrement_value").
+    - `scope`: (string) Область видимости ключа ("scope_user", "scope_bot").
+    - `storageKey`: (string) Ключ для данных.
+    - `valueToSet`: (any, optional) Значение для записи (для "set_value").
+    - `isJsonString`: (boolean, optional) Если true, `valueToSet` будет сохранено как JSON-объект/массив.
+    - `resultVariableName`: (string, optional) Имя переменной для сохранения результата.
+    - `stepValue`: (number, optional) Числовой шаг для "increment_value", "decrement_value".
+    - `storageDefinitionSlug`: (string, optional) Слаг определения хранилища.
   - Входные порты (targetHandle): `storage_input`.
   - Выходные порты (sourceHandle): `storage_output_next`.
 
 - "databaseNode": Выполнение SQL-запросов к внешним базам данных.
   - data: {{ "label": "Запрос БД", "selectedIntegrationId": null, "queryType": "select_single", "sqlQuery": "SELECT * FROM table WHERE id = ?", "parameters": [{{ "variableName": "_flow_user_id_", "dataType": "integer" }}], "outputMappings": [{{ "column": "email", "variable": "userEmail" }}], "resultListVariable": "results", "affectedRowsVariable": "count" }}
-    - `selectedIntegrationId`: ID существующей интеграции с БД (пока можно оставлять null или строковое значение, если известно).
-    - `queryType`: Тип запроса ("select_single", "select_multiple", "execute_dml").
-    - `sqlQuery`: Текст SQL-запроса. Используй `?` для плейсхолдеров параметров.
-    - `parameters`: Массив объектов параметров. Каждый объект:
-        - `variableName`: Имя переменной Nodera, значение которой будет подставлено вместо `?`.
-        - `dataType`: Тип данных ("string", "integer", "float", "boolean").
-    - `outputMappings`: (Для "select_single") Массив правил маппинга колонок результата на переменные Nodera. Каждый объект:
-        - `column`: Имя колонки в результате запроса.
-        - `variable`: Имя переменной Nodera для сохранения значения колонки.
-    - `resultListVariable`: (Для "select_multiple") Имя переменной Nodera для сохранения списка строк результата.
-    - `affectedRowsVariable`: (Для "execute_dml") Имя переменной Nodera для сохранения количества измененных строк (если применимо).
+    - `selectedIntegrationId`: (string|null) ID существующей интеграции с БД.
+    - `queryType`: (string) Тип запроса ("select_single", "select_multiple", "execute_dml").
+    - `sqlQuery`: (string) Текст SQL-запроса. Используй `?` для плейсхолдеров параметров.
+    - `parameters`: (array) Массив объектов параметров. Каждый объект: `{{ "variableName": "имя_переменной", "dataType": "тип_данных" }}`.
+    - `outputMappings`: (array, optional, для "select_single") Массив правил маппинга колонок. Каждый объект: `{{ "column": "имя_колонки", "variable": "имя_переменной" }}`.
+    - `resultListVariable`: (string, optional, для "select_multiple") Имя переменной для списка строк.
+    - `affectedRowsVariable`: (string, optional, для "execute_dml") Имя переменной для кол-ва измененных строк.
   - Входные порты (targetHandle): `db_input`.
   - Выходные порты (sourceHandle): `db_output_success`, `db_output_error`.
 """
@@ -373,9 +367,10 @@ async def generate_schema_endpoint(
         node_type_descriptions=NODE_TYPE_DESCRIPTIONS
     )
     generation_config = genai.types.GenerationConfig(
-        temperature=0.3, 
+        temperature=0.2, 
         top_p=0.9,
-        top_k=40
+        top_k=30,
+        # response_mime_type="application/json" # Включить, если Gemini 1.5 Pro или новее и он это поддерживает
     )
     safety_settings = [ 
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -385,7 +380,7 @@ async def generate_schema_endpoint(
     ]
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest",
+            model_name="gemini-1.5-flash-latest", # или gemini-1.5-pro-latest для более сложных задач
             system_instruction=full_system_prompt,
             generation_config=generation_config,
             safety_settings=safety_settings
