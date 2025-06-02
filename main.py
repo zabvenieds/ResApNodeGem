@@ -1,7 +1,8 @@
 import os
 import json
 import google.generativeai as genai
-from fastapi import FastAPI, HTTPException, Body
+from fastapi import FastAPI, HTTPException, Body, Security, Depends
+from fastapi.security.api_key import APIKeyHeader
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 from dotenv import load_dotenv
@@ -10,8 +11,12 @@ from typing import List, Dict, Any, Optional
 load_dotenv()
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+SERVICE_API_KEY_EXPECTED = os.getenv("SERVICE_API_KEY")
+
 if not GEMINI_API_KEY:
-    raise ValueError("GEMINI_API_KEY не найден в .env файле. Пожалуйста, добавьте его.")
+    raise ValueError("GEMINI_API_KEY не найден в .env файле или переменных окружения.")
+if not SERVICE_API_KEY_EXPECTED:
+    raise ValueError("SERVICE_API_KEY не найден в .env файле или переменных окружения. Авторизация не будет работать.")
 
 genai.configure(api_key=GEMINI_API_KEY)
 
@@ -64,8 +69,8 @@ class UserInputNodeData(BaseNodeData):
 class ApiCallNodeData(BaseNodeData):
     url: str = Field(..., examples=["https://api.example.com/data"])
     method: str = Field(default="GET", examples=["GET", "POST"])
-    headers: str = Field(default="{}", examples=['{"Content-Type": "application/json"}']) # JSON строка
-    body: str = Field(default="{}", examples=['{"key": "value"}']) # JSON строка
+    headers: str = Field(default="{}", examples=['{"Content-Type": "application/json"}']) 
+    body: str = Field(default="{}", examples=['{"key": "value"}']) 
     variableToStoreSuccess: str = Field(default="api_raw_response", examples=["apiData"])
     variableToStoreError: str = Field(default="api_error", examples=["apiErrorLog"])
 
@@ -88,22 +93,22 @@ class StorageNodeData(BaseNodeData):
     stepValue: Optional[float] = Field(default=1.0)
 
 class DatabaseNodeData(BaseNodeData):
-    selectedIntegrationId: Optional[str] = Field(default=None, examples=["db_integration_uuid"]) # Или int, если у вас PK - int
-    integrationName: Optional[str] = Field(default=None, examples=["Основная Пользовательская БД"]) # Для информации, AI может не генерировать
+    selectedIntegrationId: Optional[str] = Field(default=None, examples=["db_integration_uuid"]) 
+    integrationName: Optional[str] = Field(default=None, examples=["Основная Пользовательская БД"]) 
     queryType: str = Field(default="select_single", examples=["select_single", "select_multiple", "execute_dml"])
-    queryTypeLabel: Optional[str] = Field(default=None, examples=["SELECT (одна строка)"]) # Для информации
+    queryTypeLabel: Optional[str] = Field(default=None, examples=["SELECT (одна строка)"]) 
     sqlQuery: str = Field(..., examples=["SELECT * FROM users WHERE id = ?;"])
     parameters: List[NodeSqlParameter] = Field(default_factory=list)
-    outputMappings: List[NodeOutputMapping] = Field(default_factory=list) # Только для select_single
-    resultListVariable: Optional[str] = Field(default="db_results_list", examples=["userList"]) # Только для select_multiple
-    affectedRowsVariable: Optional[str] = Field(default="affected_rows_count", examples=["updatedUserCount"]) # Только для execute_dml
-    analyzedTableName: Optional[str] = Field(default=None) # Для информации
+    outputMappings: List[NodeOutputMapping] = Field(default_factory=list) 
+    resultListVariable: Optional[str] = Field(default="db_results_list", examples=["userList"]) 
+    affectedRowsVariable: Optional[str] = Field(default="affected_rows_count", examples=["updatedUserCount"]) 
+    analyzedTableName: Optional[str] = Field(default=None) 
 
 class NodeModel(BaseModel):
     id: str = Field(..., examples=["node_unique_id_1"])
     type: str = Field(..., examples=["messageNode"])
     position: NodePosition
-    data: Dict[str, Any] # Не используем Union здесь, чтобы AI было проще, валидация data будет позже
+    data: Dict[str, Any]
 
 class EdgeModel(BaseModel):
     id: str = Field(..., examples=["edge_1_to_2"])
@@ -118,13 +123,25 @@ class ReactFlowSchema(BaseModel):
     edges: List[EdgeModel]
     viewport: Optional[Dict[str, Any]] = Field(default=None)
 
-
 app = FastAPI(
     title="Nodera AI Schema Generator",
     description="Сервис для генерации React Flow схем для Nodera с помощью Gemini AI.",
     version="0.1.0"
 )
 
+API_KEY_NAME = "X-API-Key"
+api_key_header_auth = APIKeyHeader(name=API_KEY_NAME, auto_error=True)
+
+async def get_api_key(api_key_header: str = Security(api_key_header_auth)):
+    """
+    Проверяет предоставленный API ключ.
+    """
+    if api_key_header == SERVICE_API_KEY_EXPECTED:
+        return api_key_header
+    else:
+        raise HTTPException(
+            status_code=403, detail="Неверный или отсутствующий API ключ"
+        )
 
 SYSTEM_PROMPT_TEMPLATE = """
 Ты — продвинутый ИИ-ассистент, специализирующийся на создании структур (схем) для конструктора Telegram-ботов Nodera.
@@ -150,8 +167,8 @@ JSON должен соответствовать следующей структ
       "id": "edge_УНИКАЛЬНЫЙ_ID",
       "source": "ID_ИСХОДНОГО_УЗЛА",
       "target": "ID_ЦЕЛЕВОГО_УЗЛА",
-      "sourceHandle": "ID_ИСХОДНОГО_ПОРТА", // Опционально, если у узла один выход, может быть null или отсутствовать для некоторых узлов
-      "targetHandle": "ID_ЦЕЛЕВОГО_ПОРТА", // Опционально, если у узла один вход, может быть null или отсутствовать
+      "sourceHandle": "ID_ИСХОДНОГО_ПОРТА", 
+      "targetHandle": "ID_ЦЕЛЕВОГО_ПОРТА", 
       "type": "smoothstep"
     }}
   ]
@@ -285,58 +302,41 @@ ALLOWED_NODE_TYPES = [
     "apiCallNode", "extractDataNode", "setVariableNode", "storageNode", "databaseNode"
 ]
 
-
 def validate_generated_schema(schema_json: dict) -> tuple[Optional[ReactFlowSchema], Optional[str]]:
     """
     Валидирует JSON-схему, сгенерированную AI.
     """
     try:
         schema = ReactFlowSchema(**schema_json)
-
         if not schema.nodes:
             return None, "Сгенерированная схема не содержит узлов (nodes)."
-
         node_ids = set()
         for node_idx, node in enumerate(schema.nodes):
             if not node.id:
-                 node.id = f"node_gen_{node_idx + 1}" # Генерируем ID, если отсутствует
+                 node.id = f"node_gen_{node_idx + 1}" 
             if node.id in node_ids:
-                # Попытка сделать ID уникальным, если он уже есть
                 original_id = node.id
                 counter = 1
                 while f"{original_id}_{counter}" in node_ids:
                     counter += 1
                 node.id = f"{original_id}_{counter}"
-
             node_ids.add(node.id)
-
             if node.type not in ALLOWED_NODE_TYPES:
                 return None, f"Недопустимый тип узла: {node.type} для узла {node.id}"
-            
             if not node.data.get("label"):
                  node.data["label"] = f"{node.type.replace('Node','').capitalize()} {node.id.split('_')[-1]}"
-
-
-            # Базовая валидация data полей в зависимости от типа узла
-            # Это можно расширить, используя Pydantic модели для каждого data-типа
             required_data_fields = {
-                "startNode": ["command"],
-                "messageNode": ["messageText"],
-                "conditionNode": ["conditionType"],
+                "startNode": ["command"], "messageNode": ["messageText"], "conditionNode": ["conditionType"],
                 "userInputNode": ["questionText", "variableToStore"],
                 "apiCallNode": ["url", "method", "variableToStoreSuccess", "variableToStoreError"],
                 "extractDataNode": ["inputVariable", "mappings"],
                 "setVariableNode": ["variableName", "variableValue"],
-                "storageNode": ["operation", "storageKey"],
-                "databaseNode": ["sqlQuery", "queryType"],
+                "storageNode": ["operation", "storageKey"], "databaseNode": ["sqlQuery", "queryType"],
             }
             if node.type in required_data_fields:
                 for field in required_data_fields[node.type]:
                     if field not in node.data:
-                        # Можно либо выбрасывать ошибку, либо пытаться подставить значение по умолчанию, если это возможно
-                         pass # print(f"Предупреждение: отсутствует обязательное поле '{field}' в data для узла {node.id} ({node.type})")
-
-
+                         pass 
         edge_ids = set()
         for edge_idx, edge in enumerate(schema.edges):
             if not edge.id:
@@ -348,56 +348,41 @@ def validate_generated_schema(schema_json: dict) -> tuple[Optional[ReactFlowSche
                     counter += 1
                 edge.id = f"{original_id}_{counter}"
             edge_ids.add(edge.id)
-
             if edge.source not in node_ids:
                 return None, f"Связь {edge.id} ссылается на несуществующий исходный узел {edge.source}"
             if edge.target not in node_ids:
                 return None, f"Связь {edge.id} ссылается на несуществующий целевой узел {edge.target}"
-
         return schema, None
     except Exception as e:
         return None, f"Ошибка валидации Pydantic или внутренняя ошибка валидации схемы: {str(e)}"
 
 @app.post("/generate-schema", response_model=ReactFlowSchema, response_model_exclude_none=True)
-async def generate_schema_endpoint(request_data: GenerateSchemaRequest = Body(...)):
+async def generate_schema_endpoint(
+    request_data: GenerateSchemaRequest = Body(...),
+    api_key: str = Depends(get_api_key)
+):
     """
     Принимает текстовый запрос пользователя и генерирует схему React Flow.
+    Требует валидный X-API-Key в заголовках.
     """
     user_prompt_text = request_data.user_prompt
     if not user_prompt_text.strip():
         raise HTTPException(status_code=400, detail="Запрос пользователя не может быть пустым.")
-
     full_system_prompt = SYSTEM_PROMPT_TEMPLATE.format(
         user_prompt=user_prompt_text,
         node_type_descriptions=NODE_TYPE_DESCRIPTIONS
     )
-    
     generation_config = genai.types.GenerationConfig(
-        # response_mime_type="application/json", # Включаем, если модель поддерживает JSON mode
-        temperature=0.3, # Более низкая температура для более предсказуемого JSON
+        temperature=0.3, 
         top_p=0.9,
         top_k=40
     )
-
-    safety_settings = [ # Ослабляем настройки безопасности, если они мешают генерации JSON
-        {
-            "category": "HARM_CATEGORY_HARASSMENT",
-            "threshold": "BLOCK_NONE",
-        },
-        {
-            "category": "HARM_CATEGORY_HATE_SPEECH",
-            "threshold": "BLOCK_NONE",
-        },
-        {
-            "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-            "threshold": "BLOCK_NONE",
-        },
-        {
-            "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-            "threshold": "BLOCK_NONE",
-        },
+    safety_settings = [ 
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_NONE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_NONE"},
     ]
-
     try:
         model = genai.GenerativeModel(
             model_name="gemini-1.5-flash-latest",
@@ -405,58 +390,39 @@ async def generate_schema_endpoint(request_data: GenerateSchemaRequest = Body(..
             generation_config=generation_config,
             safety_settings=safety_settings
         )
-        
-        # Для Gemini 1.5 рекомендуется передавать пользовательский промпт как отдельное сообщение
-        # в `contents`. `system_instruction` уже установлен при инициализации модели.
-        # Если модель ожидает только одно текстовое поле, то можно передать user_prompt_text.
-        # Экспериментируйте с форматом `contents`
-        response = model.generate_content(user_prompt_text) # или contents=[user_prompt_text]
-
+        response = model.generate_content(user_prompt_text)
         generated_text = response.text.strip()
-
         if response.prompt_feedback and response.prompt_feedback.block_reason:
             block_reason_message = f"Запрос был заблокирован AI. Причина: {response.prompt_feedback.block_reason}."
             if response.prompt_feedback.safety_ratings:
                  block_reason_message += f" Рейтинги безопасности: {response.prompt_feedback.safety_ratings}"
             raise HTTPException(status_code=400, detail=block_reason_message)
-
-
         if generated_text.startswith("```json"):
             generated_text = generated_text[len("```json"):].strip()
         elif generated_text.startswith("```"):
             generated_text = generated_text[len("```"):].strip()
-        
         if generated_text.endswith("```"):
             generated_text = generated_text[:-len("```")].strip()
-        
         if not generated_text:
             raise HTTPException(status_code=500, detail="AI не вернул никакого текста.")
-
         try:
             schema_json = json.loads(generated_text)
         except json.JSONDecodeError as e:
             error_detail_msg = f"AI вернул невалидный JSON. Ошибка: {e}. Получено: '{generated_text[:500]}...'"
             print(f"Ошибка декодирования JSON от AI: {e}")
             print(f"Полученный текст: \n---\n{generated_text}\n---")
-            raise HTTPException(
-                status_code=500, 
-                detail=error_detail_msg
-            )
-
+            raise HTTPException(status_code=500, detail=error_detail_msg)
         validated_schema, error_detail = validate_generated_schema(schema_json)
         if error_detail:
             print(f"Ошибка валидации сгенерированной схемы: {error_detail}")
             print(f"Схема JSON: \n---\n{json.dumps(schema_json, indent=2, ensure_ascii=False)}\n---")
             raise HTTPException(status_code=500, detail=f"Сгенерированная схема не прошла валидацию: {error_detail}")
-        
         if not validated_schema:
             raise HTTPException(status_code=500, detail="Не удалось провалидировать схему после генерации (неизвестная ошибка).")
-
         return validated_schema
-
     except Exception as e:
         print(f"Произошла ошибка при вызове Gemini API или обработке ответа: {type(e).__name__}: {e}")
-        if isinstance(e, HTTPException): # Перебрасываем HTTPException без изменений
+        if isinstance(e, HTTPException):
             raise e
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка сервера при генерации схемы AI: {str(e)}")
 
