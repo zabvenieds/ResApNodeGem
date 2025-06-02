@@ -151,9 +151,9 @@ SYSTEM_PROMPT_TEMPLATE = """
 
 ВАЖНО: Твой ответ ДОЛЖЕН БЫТЬ ТОЛЬКО JSON объектом и НИЧЕМ БОЛЕЕ. Не добавляй никакого описательного текста до или после JSON.
 JSON должен соответствовать следующей структуре:
-{{
+{{{{
   "nodes": [
-    {{
+    {{{{
       "id": "node_УНИКАЛЬНЫЙ_ID",
       "type": "ТИП_УЗЛА",
       "position": {{ "x": X_КООРДИНАТА, "y": Y_КООРДИНАТА }},
@@ -161,19 +161,19 @@ JSON должен соответствовать следующей структ
         "label": "Метка узла (на русском)",
         // ... другие поля data, специфичные для ТИПА_УЗЛА ...
       }}
-    }}
+    }}}}
   ],
   "edges": [
-    {{
+    {{{{
       "id": "edge_УНИКАЛЬНЫЙ_ID",
       "source": "ID_ИСХОДНОГО_УЗЛА",
       "target": "ID_ЦЕЛЕВОГО_УЗЛА",
       "sourceHandle": "ID_ИСХОДНОГО_ПОРТА", 
       "targetHandle": "ID_ЦЕЛЕВОГО_ПОРТА", 
       "type": "smoothstep"
-    }}
+    }}}}
   ]
-}}
+}}}}
 
 Доступные типы узлов (ТИП_УЗЛА) и их основные поля в `data` (всегда включай поле "label" на русском языке):
 {node_type_descriptions}
@@ -193,7 +193,7 @@ JSON должен соответствовать следующей структ
     - Для "user_reply": `replyOperator`, `replyValue` (ожидаемое callback_data).
     - Всегда два исходящих ребра: одно с `sourceHandle: "true_output"`, другое с `sourceHandle: "false_output"`.
 7.  **Узел "userInputNode":** `questionText` и `variableToStore` (имя переменной для ответа).
-8.  **Переменные:** Имена переменных в `variableToStore` (userInputNode), `variableName` (conditionNode, setVariableNode), `inputVariable` (extractDataNode), `resultVariableName` (storageNode) и т.д. должны быть в camelCase или snake_case и не должны содержать фигурных скобок `{}`. Платформа Nodera сама будет обрабатывать их как плейсхолдеры вида `{{имя_переменной}}` при использовании в текстах сообщений или других полях.
+8.  **Переменные:** Имена переменных в `variableToStore` (userInputNode), `variableName` (conditionNode, setVariableNode), `inputVariable` (extractDataNode), `resultVariableName` (storageNode) и т.д. должны быть в camelCase или snake_case и не должны содержать фигурных скобок `{{}}`. Платформа Nodera сама будет обрабатывать их как плейсхолдеры вида `{{{{имя_переменной}}}}` при использовании в текстах сообщений или других полях.
 9.  **Узлы API, Хранилища, БД:** Заполняй ключевые поля (`url`, `method` для API; `operation`, `storageKey` для Хранилища; `sqlQuery`, `queryType` для БД) и необходимые переменные для результатов. `headers` и `body` в `apiCallNode` должны быть строками, содержащими валидный JSON.
 10. **Логика по умолчанию:** Если запрос пользователя неясный, создай простую схему с "startNode" и "messageNode" с приветствием.
 11. **Только JSON:** Никакого текста до или после JSON-ответа. Убедись, что JSON строго соответствует описанной структуре.
@@ -204,13 +204,13 @@ JSON должен соответствовать следующей структ
 
 NODE_TYPE_DESCRIPTIONS = f"""
 - "startNode": Стартовый узел бота. Инициирует поток логики по команде.
-  - data: {{ "label": "Начало", "command": "/start" }}
+  - data: {{{{ "label": "Начало", "command": "/start" }}}}
     - `command`: (string) Текстовая команда для запуска этого потока (например, "/shop", "/register"). Должна начинаться с "/".
   - Выходные порты (sourceHandle): `start_output` (основной выход).
 
 - "messageNode": Узел для отправки текстового сообщения пользователю. Может содержать inline-кнопки.
-  - data: {{ "label": "Сообщение", "messageText": "Текст сообщения...", "buttons": [{{ "id": "btn_1", "text": "Кнопка 1", "callback_data": "cb_1" }}] }}
-    - `messageText`: (string) Текст сообщения. Можно использовать плейсхолдеры (например, `{{userName}}`).
+  - data: {{{{ "label": "Сообщение", "messageText": "Текст сообщения...", "buttons": [{{{{ "id": "btn_1", "text": "Кнопка 1", "callback_data": "cb_1" }}}}] }}}}
+    - `messageText`: (string) Текст сообщения. Можно использовать плейсхолдеры (например, `{{{{userName}}}}`).
     - `buttons`: (array) Массив объектов кнопок (опционально). Каждая кнопка:
         - `id`: (string) Уникальный ID кнопки (например, "btn_confirm_order"). Важно для `sourceHandle`.
         - `text`: (string) Текст на кнопке.
@@ -221,7 +221,7 @@ NODE_TYPE_DESCRIPTIONS = f"""
     - `btn-out-ID_КНОПКИ`: Для каждой кнопки, где ID_КНОПКИ - это `id` из объекта кнопки (например, `btn-out-btn_confirm_order`).
 
 - "conditionNode": Узел для ветвления логики на основе условия.
-  - data: {{ "label": "Условие", "conditionType": "variable_check", "variableName": "varName", "operator": "equals_text", "valueToCompare": "someValue", "replyOperator": "equals_text", "replyValue": "cb_data" }}
+  - data: {{{{ "label": "Условие", "conditionType": "variable_check", "variableName": "varName", "operator": "equals_text", "valueToCompare": "someValue", "replyOperator": "equals_text", "replyValue": "cb_data" }}}}
     - `conditionType`: (string) Тип условия: "variable_check" или "user_reply".
     - `variableName`: (string, optional) Имя переменной для проверки (для `conditionType: "variable_check"`).
     - `operator`: (string, optional) Оператор сравнения для переменной (например, "equals_text", "contains_text", "is_number_greater_than", "is_number_less_than", "is_number_equal_to").
@@ -232,25 +232,25 @@ NODE_TYPE_DESCRIPTIONS = f"""
   - Выходные порты (sourceHandle): `true_output` (если условие истинно), `false_output` (если условие ложно).
 
 - "userInputNode": Запрашивает текстовый ввод у пользователя.
-  - data: {{ "label": "Ввод пользователя", "questionText": "Введите ваше имя:", "variableToStore": "userName" }}
+  - data: {{{{ "label": "Ввод пользователя", "questionText": "Введите ваше имя:", "variableToStore": "userName" }}}}
     - `questionText`: (string) Текст вопроса, который увидит пользователь.
     - `variableToStore`: (string) Имя переменной, в которую будет сохранен ответ пользователя.
   - Входные порты (targetHandle): `input_A`.
   - Выходные порты (sourceHandle): `output_A`.
 
 - "apiCallNode": Выполняет HTTP-запрос к внешнему API.
-  - data: {{ "label": "API запрос", "url": "https://...", "method": "GET", "headers": "{{}}", "body": "{{}}", "variableToStoreSuccess": "api_response", "variableToStoreError": "api_error" }}
+  - data: {{{{ "label": "API запрос", "url": "https://...", "method": "GET", "headers": "{{{{}}}}", "body": "{{{{}}}}", "variableToStoreSuccess": "api_response", "variableToStoreError": "api_error" }}}}
     - `url`: (string) URL API-эндпоинта.
     - `method`: (string) HTTP-метод ("GET", "POST", "PUT", "DELETE", "PATCH").
-    - `headers`: (string) JSON-строка с заголовками (например, `{{"Authorization": "Bearer TOKEN"}}`). По умолчанию пустой JSON-объект "{{}}".
-    - `body`: (string) JSON-строка с телом запроса (для POST, PUT, PATCH). По умолчанию пустой JSON-объект "{{}}".
+    - `headers`: (string) JSON-строка с заголовками (например, `{{"Authorization": "Bearer TOKEN"}}`). По умолчанию пустой JSON-объект "{{{{}}}}".
+    - `body`: (string) JSON-строка с телом запроса (для POST, PUT, PATCH). По умолчанию пустой JSON-объект "{{{{}}}}".
     - `variableToStoreSuccess`: (string) Имя переменной для сохранения успешного ответа.
     - `variableToStoreError`: (string) Имя переменной для сохранения информации об ошибке.
   - Входные порты (targetHandle): `api_input`.
   - Выходные порты (sourceHandle): `api_output_success`, `api_output_error`.
 
 - "extractDataNode": Извлекает данные из JSON-объекта (хранящегося в переменной) с помощью JSONPath.
-  - data: {{ "label": "Извлечь JSON", "inputVariable": "api_response", "mappings": [{{ "path": "user.name", "variableName": "extractedUserName" }}] }}
+  - data: {{{{ "label": "Извлечь JSON", "inputVariable": "api_response", "mappings": [{{{{ "path": "user.name", "variableName": "extractedUserName" }}}}] }}}}
     - `inputVariable`: (string) Имя переменной, содержащей JSON.
     - `mappings`: (array) Массив правил извлечения. Каждое правило:
         - `path`: (string) JSONPath-выражение (например, `data.items[0].price`).
@@ -259,14 +259,14 @@ NODE_TYPE_DESCRIPTIONS = f"""
   - Выходные порты (sourceHandle): `extract_output`.
 
 - "setVariableNode": Устанавливает или обновляет значение переменной в потоке.
-  - data: {{ "label": "Установить переменную", "variableName": "myVar", "variableValue": "некое значение" }}
+  - data: {{{{ "label": "Установить переменную", "variableName": "myVar", "variableValue": "некое значение" }}}}
     - `variableName`: (string) Имя переменной.
     - `variableValue`: (any) Значение переменной (может быть строкой, числом, JSON-строкой).
   - Входные порты (targetHandle): `setvar_input`.
   - Выходные порты (sourceHandle): `setvar_output`.
 
 - "storageNode": Взаимодействие с внутренним хранилищем данных бота.
-  - data: {{ "label": "Хранилище", "operation": "set_value", "scope": "scope_user", "storageKey": "user_data", "valueToSet": "some data", "resultVariableName": "stored_data", "isJsonString": false, "stepValue": 1, "storageDefinitionSlug": null }}
+  - data: {{{{ "label": "Хранилище", "operation": "set_value", "scope": "scope_user", "storageKey": "user_data", "valueToSet": "some data", "resultVariableName": "stored_data", "isJsonString": false, "stepValue": 1, "storageDefinitionSlug": null }}}}
     - `operation`: (string) Тип операции ("set_value", "get_value", "delete_value", "check_key", "increment_value", "decrement_value").
     - `scope`: (string) Область видимости ключа ("scope_user", "scope_bot").
     - `storageKey`: (string) Ключ для данных.
@@ -279,12 +279,12 @@ NODE_TYPE_DESCRIPTIONS = f"""
   - Выходные порты (sourceHandle): `storage_output_next`.
 
 - "databaseNode": Выполнение SQL-запросов к внешним базам данных.
-  - data: {{ "label": "Запрос БД", "selectedIntegrationId": null, "queryType": "select_single", "sqlQuery": "SELECT * FROM table WHERE id = ?", "parameters": [{{ "variableName": "_flow_user_id_", "dataType": "integer" }}], "outputMappings": [{{ "column": "email", "variable": "userEmail" }}], "resultListVariable": "results", "affectedRowsVariable": "count" }}
+  - data: {{{{ "label": "Запрос БД", "selectedIntegrationId": null, "queryType": "select_single", "sqlQuery": "SELECT * FROM table WHERE id = ?", "parameters": [{{{{ "variableName": "_flow_user_id_", "dataType": "integer" }}}}], "outputMappings": [{{{{ "column": "email", "variable": "userEmail" }}}}], "resultListVariable": "results", "affectedRowsVariable": "count" }}}}
     - `selectedIntegrationId`: (string|null) ID существующей интеграции с БД.
     - `queryType`: (string) Тип запроса ("select_single", "select_multiple", "execute_dml").
     - `sqlQuery`: (string) Текст SQL-запроса. Используй `?` для плейсхолдеров параметров.
-    - `parameters`: (array) Массив объектов параметров. Каждый объект: `{{ "variableName": "имя_переменной", "dataType": "тип_данных" }}`.
-    - `outputMappings`: (array, optional, для "select_single") Массив правил маппинга колонок. Каждый объект: `{{ "column": "имя_колонки", "variable": "имя_переменной" }}`.
+    - `parameters`: (array) Массив объектов параметров. Каждый объект: `{{{{ "variableName": "имя_переменной", "dataType": "тип_данных" }}}}`.
+    - `outputMappings`: (array, optional, для "select_single") Массив правил маппинга колонок. Каждый объект: `{{{{ "column": "имя_колонки", "variable": "имя_переменной" }}}}`.
     - `resultListVariable`: (string, optional, для "select_multiple") Имя переменной для списка строк.
     - `affectedRowsVariable`: (string, optional, для "execute_dml") Имя переменной для кол-ва измененных строк.
   - Входные порты (targetHandle): `db_input`.
@@ -370,7 +370,6 @@ async def generate_schema_endpoint(
         temperature=0.2, 
         top_p=0.9,
         top_k=30,
-        # response_mime_type="application/json" # Включить, если Gemini 1.5 Pro или новее и он это поддерживает
     )
     safety_settings = [ 
         {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_NONE"},
@@ -380,7 +379,7 @@ async def generate_schema_endpoint(
     ]
     try:
         model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash-latest", # или gemini-1.5-pro-latest для более сложных задач
+            model_name="gemini-1.5-flash-latest",
             system_instruction=full_system_prompt,
             generation_config=generation_config,
             safety_settings=safety_settings
