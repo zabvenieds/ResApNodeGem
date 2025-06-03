@@ -138,7 +138,7 @@ class ReactFlowSchema(BaseModel):
 app = FastAPI(
     title="Nodera AI Schema Generator",
     description="Сервис для генерации React Flow схем для Nodera с помощью Gemini AI. Nodera - это no-code конструктор Telegram ботов, позволяющий визуально создавать логику чат-ботов без написания кода. Платформа поддерживает различные типы узлов для отправки сообщений, приема ввода, выполнения условий, вызовов API, работы с переменными, хранилищем данных, базами данных, таймерами и операциями со списками.",
-    version="0.1.5"
+    version="0.1.6"
 )
 
 API_KEY_NAME = "X-API-Key"
@@ -194,24 +194,26 @@ SYSTEM_PROMPT_TEMPLATE = """
 3.  **Расположение узлов в потоке:** Узлы одного логического потока располагай преимущественно вертикально вниз (шаг Y ~150-200). Для ветвлений (после "conditionNode") узлы веток "Да"/"Нет" располагай по бокам от основной оси (сдвиг X ~ +/-250).
 4.  **ID узлов и связей:** Уникальные, строковые, латиницей, без пробелов (можно `_` или `-`). Осмысленные.
 5.  **Метки узлов (`label`):** Обязательны. Краткие, понятные, на русском, отражающие суть.
-6.  **Узел "messageNode":** `messageText` может содержать `{{{{переменная}}}}`. Кнопки в `data.buttons`: `{{{{ "id": "btn_id", "text": "Текст", "callback_data": "cb_data" }}}}`. Связь от кнопки: `sourceHandle: "btn-out-ID_КНОПКИ"`. Без кнопок: `sourceHandle: "message_output_main"`.
-7.  **Узел "conditionNode":** `conditionType`: "variable_check" или "user_reply". 
+6.  **Узел "messageNode":** `messageText` может содержать `{{{{переменная}}}}`. 
+    - Если есть кнопки, определи их в `data.buttons`: `{{{{ "id": "уник_id_кнопки", "text": "Текст кнопки", "callback_data": "уник_callback_data"}}}}`. 
+    - **Важно:** Каждая кнопка, которая должна инициировать действие, должна иметь исходящую связь от своего порта. Порт кнопки: `btn-out-ID_КНОПКИ` (например, `btn-out-confirm_yes`). 
+    - Выход `message_output_main` используется, только если у "messageNode" нет кнопок и поток продолжается.
+7.  **Сохранение callback_data от кнопки в переменную:** Если нужно сохранить `callback_data` нажатой кнопки в переменную:
+    a.  Создай один узел "setVariableNode".
+    b.  В `data.variableName` укажи имя переменной (например, `userChoice`).
+    c.  В `data.variableValue` укажи специальный плейсхолдер: `{{{{last_callback_data}}}}`.
+    d.  Каждая кнопка из "messageNode", чей `callback_data` нужно сохранить, должна иметь исходящую связь от своего порта (`btn-out-ID_КНОПКИ`) к этому "setVariableNode".
+8.  **Узел "conditionNode":** `conditionType`: "variable_check" или "user_reply". 
     - Для "variable_check": `variableName` (без `{{}}`), `operator` (включая "is_empty", "is_not_empty"), `valueToCompare` (строка, даже если число, напр., "18"; может содержать `{{{{переменная}}}}`).
     - Для "user_reply": `replyOperator` (включая "equals" как синоним "equals_text"), `replyValue`. 
     - Выходы: `sourceHandle: "true_output"` и `sourceHandle: "false_output"`.
-8.  **Плейсхолдеры:** Используй `{{{{имя_переменной}}}}` (включая `{{{{_flow_user_id_}}}}`) для подстановки значений в поля `messageText`, `url`, `valueToSet`, `storageKey`, `valueField` (для arrayManipulationNode) и т.д.
-9.  **JSON в строках:** Для `headers` и `body` ("apiCallNode"), и `valueField` ("arrayManipulationNode" при `operation: "create_overwrite_list"`) значения должны быть строками с валидным JSON. Например, `headers: "{{\\"Content-Type\\":\\"application/json\\"}}"`.
-10. **Узел "timerNode" (Таймер):**
-    - Определяет задержку с помощью `delayValue` (число) и `delayUnit` ("seconds", "minutes", "hours", "days").
-    - Может иметь опциональный `timerId` (строка) для возможности управления таймером в будущем.
-    - **Важно:** `TimerNode` имеет ТОЛЬКО ОДИН выходной порт: `timer_elapsed_output`. Этот порт активируется и передает управление следующему узлу **ИСКЛЮЧИТЕЛЬНО ПОСЛЕ ТОГО, КАК УКАЗАННАЯ ЗАДЕРЖКА ИСТЕЧЕТ**.
-    - Любые действия или сообщения, которые должны произойти *сразу после того, как таймер был установлен* (например, сообщение "Напоминание установлено на X минут"), должны быть размещены в схеме **ПЕРЕД** узлом `TimerNode`. Сам узел `TimerNode` не имеет выхода для немедленного продолжения потока; он только ставит отложенную задачу.
-11. **Контекст переменных для отложенных действий (например, после "timerNode"):**
-    - Когда отложенное действие (например, после `timerNode`) выполняется, все переменные, которые были установлены в потоке *до* узла, инициировавшего задержку (например, *до* `timerNode`), будут доступны с **ТЕМИ ЖЕ САМЫМИ ИМЕНАМИ**.
-    - При использовании этих переменных в плейсхолдерах (например, в `messageText` узла, который выполняется после таймера), используй их оригинальные имена, например: `{{{{newTaskText}}}}` или `{{{{userChoice}}}}`. **Не придумывай новые имена переменных с суффиксами типа `_from_timer_context` или `_after_timer`.**
-12. **Узел "arrayManipulationNode":** В `data` обязательны `listVariableName` (без `{{}}`) и `operation`. В зависимости от операции, также `valueField` (добавляемый элемент или JSON-строка массива для создания/перезаписи), `indexField` (индекс, может быть плейсхолдером), `resultVariableName` (для операций, возвращающих результат, без `{{}}`).
-13. **Детализация и умолчания:** Чем подробнее запрос, тем лучше. Если неясно, генерируй базовую логику.
-14. **Строго JSON:** Ответ – исключительно JSON-объект.
+9.  **Плейсхолдеры:** Используй `{{{{имя_переменной}}}}` (включая `{{{{_flow_user_id_}}}}`) для подстановки значений в поля `messageText`, `url`, `valueToSet`, `storageKey`, `valueField` (для arrayManipulationNode) и т.д.
+10. **JSON в строках:** Для `headers` и `body` ("apiCallNode"), и `valueField` ("arrayManipulationNode" при `operation: "create_overwrite_list"`) значения должны быть строками с валидным JSON.
+11. **Узел "timerNode":** `delayValue` (число), `delayUnit` ("seconds", "minutes", "hours", "days"), `timerId` (опционально, строка). Выходной порт `timer_elapsed_output` используется для действий *после* срабатывания таймера. Действия *сразу после* установки таймера должны быть в узлах *перед* `TimerNode`.
+12. **Контекст переменных для "timerNode":** Когда таймер срабатывает, доступны все переменные, установленные *до* `TimerNode`. Используй их *оригинальные имена* в плейсхолдерах, не придумывай новые с суффиксами.
+13. **Узел "arrayManipulationNode":** В `data` обязательны `listVariableName` (без `{{}}`) и `operation`. В зависимости от операции, также `valueField`, `indexField`, `resultVariableName` (без `{{}}`).
+14. **Детализация и умолчания:** Если запрос неясный, генерируй базовую логику.
+15. **Строго JSON:** Ответ – исключительно JSON-объект.
 
 Текущий запрос пользователя: "{user_prompt}"
 Сгенерируй JSON-структуру для этого запроса.
@@ -227,7 +229,7 @@ NODE_TYPE_DESCRIPTIONS = f"""
   - data: {{{{ "label": "Сообщение", "messageText": "Текст, можно с {{{{переменной}}}}.", "buttons": [{{{{ "id": "button1_id", "text": "Кнопка", "callback_data": "action1" }}}}] }}}}
     - `messageText`: (string) Текст. Поддерживает плейсхолдеры `{{{{имя_переменной}}}}`.
     - `buttons`: (array, optional) Кнопки: `{{{{ "id": "str_id", "text": "str_text", "callback_data": "str_cb" }}}}`.
-  - Входные порты (targetHandle): `message_input`. Выходные порты (sourceHandle): `message_output_main` или `btn-out-ID_КНОПКИ`.
+  - Входные порты (targetHandle): `message_input`. Выходные порты (sourceHandle): `message_output_main` (если нет кнопок и должен быть следующий шаг), или `btn-out-ID_КНОПКИ` для каждой кнопки.
 
 - "conditionNode": Ветвление логики.
   - data: {{{{ "label": "Условие", "conditionType": "variable_check", "variableName": "userScore", "operator": "is_number_greater_than", "valueToCompare": "100" }}}}
@@ -261,7 +263,7 @@ NODE_TYPE_DESCRIPTIONS = f"""
 - "setVariableNode": Установка/обновление значения переменной.
   - data: {{{{ "label": "Установить Переменную", "variableName": "statusVar", "variableValue": "активно" }}}}
     - `variableName`: (string) Имя переменной (без `{{{{}}}}`).
-    - `variableValue`: (any) Значение. Можно плейсхолдеры.
+    - `variableValue`: (any) Значение. Можно использовать плейсхолдеры, включая специальный `{{{{last_callback_data}}}}` для сохранения callback_data от последней нажатой кнопки (если узел "setVariableNode" следует сразу за узлом "messageNode" с кнопками, и все релевантные кнопки ведут к нему).
   - Входные порты (targetHandle): `setvar_input`. Выходные порты (sourceHandle): `setvar_output`.
 
 - "storageNode": Работа с внутренним хранилищем Nodera.
@@ -292,9 +294,9 @@ NODE_TYPE_DESCRIPTIONS = f"""
   - data: {{{{ "label": "Операции со списком", "listVariableName": "myArray", "operation": "append_item", "valueField": "новый элемент", "indexField": 0, "resultVariableName": "operationResult" }}}}
     - `listVariableName`: (string) Имя переменной-списка (без `{{{{}}}}`).
     - `operation`: (string) Тип: "create_overwrite_list", "append_item", "prepend_item", "remove_by_index", "remove_by_value", "get_by_index", "get_length", "clear_list", "check_exists".
-    - `valueField`: (any, optional) Значение для операций (JSON-массив для create, элемент для append/prepend/remove_by_value/check_exists). Может содержать плейсхолдеры.
+    - `valueField`: (any, optional) Значение для операций. Для "create_overwrite_list" это JSON-строка массива (напр., `"[1, \\"два\\", {{{{var3}}}}]"`). Для других - элемент. Может содержать плейсхолдеры.
     - `indexField`: (string|number, optional) Индекс для операций по индексу (0-based). Может быть плейсхолдером.
-    - `resultVariableName`: (string, optional) Имя переменной для результата (get_by_index, get_length, check_exists) (без `{{{{}}}}`).
+    - `resultVariableName`: (string, optional) Имя переменной для результата (без `{{{{}}}}`).
   - Входные порты (targetHandle): `array_input`. Выходные порты (sourceHandle): `output_next`.
 """
 
