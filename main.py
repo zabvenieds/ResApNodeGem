@@ -57,9 +57,9 @@ class MessageNodeData(BaseNodeData):
 class ConditionNodeData(BaseNodeData):
     conditionType: str = Field(default="variable_check", examples=["variable_check", "user_reply"])
     variableName: Optional[str] = Field(default=None, examples=["userAgeValue"])
-    operator: Optional[str] = Field(default="equals_text", examples=["equals_text", "is_number_greater_than", "contains_text"])
+    operator: Optional[str] = Field(default="equals_text", examples=["equals_text", "is_number_greater_than", "contains_text", "is_empty", "is_not_empty"])
     valueToCompare: Optional[Any] = Field(default=None, examples=["completed_status", "18", "substring_to_find"])
-    replyOperator: Optional[str] = Field(default=None, examples=["equals_text", "starts_with_text"])
+    replyOperator: Optional[str] = Field(default=None, examples=["equals_text", "starts_with_text", "equals"])
     replyValue: Optional[str] = Field(default=None, examples=["callback_yes_option"])
 
 class UserInputNodeData(BaseNodeData):
@@ -112,9 +112,9 @@ class TimerNodeData(BaseNodeData):
 class ArrayManipulationNodeData(BaseNodeData):
     listVariableName: str = Field(..., examples=["shoppingCart", "todoList"])
     operation: str = Field(..., examples=["create_overwrite_list", "append_item", "get_length"])
-    valueField: Optional[Any] = Field(default=None, examples=['["apple", "banana"]', "new_item", '{{"id":1, "name":"product"}}']) # Для создания, добавления, удаления по значению
-    indexField: Optional[Any] = Field(default=None, examples=[0, 1, "{{myIndexVar}}"]) # Для операций по индексу (число или переменная)
-    resultVariableName: Optional[str] = Field(default=None, examples=["itemAtIndex", "listLength", "itemExists"]) # Для операций, возвращающих результат
+    valueField: Optional[Any] = Field(default=None, examples=['["apple", "banana"]', "new_item", '{{"id":1, "name":"product"}}'])
+    indexField: Optional[Any] = Field(default=None, examples=[0, 1, "{{myIndexVar}}"]) 
+    resultVariableName: Optional[str] = Field(default=None, examples=["itemAtIndex", "listLength", "itemExists"])
 
 class NodeModel(BaseModel):
     id: str = Field(..., examples=["node_start_flow_1"])
@@ -137,8 +137,8 @@ class ReactFlowSchema(BaseModel):
 
 app = FastAPI(
     title="Nodera AI Schema Generator",
-    description="Сервис для генерации React Flow схем для Nodera с помощью Gemini AI. Nodera - это no-code конструктор Telegram ботов, позволяющий визуально создавать логику чат-ботов без написания кода. Платформа поддерживает различные типы узлов для отправки сообщений, приема ввода, выполнения условий, вызовов API, работы с переменными, хранилищем данных, базами данных и таймерами.",
-    version="0.1.4"
+    description="Сервис для генерации React Flow схем для Nodera с помощью Gemini AI. Nodera - это no-code конструктор Telegram ботов, позволяющий визуально создавать логику чат-ботов без написания кода. Платформа поддерживает различные типы узлов для отправки сообщений, приема ввода, выполнения условий, вызовов API, работы с переменными, хранилищем данных, базами данных, таймерами и операциями со списками.",
+    version="0.1.5"
 )
 
 API_KEY_NAME = "X-API-Key"
@@ -189,18 +189,22 @@ SYSTEM_PROMPT_TEMPLATE = """
 {node_type_descriptions}
 
 Ключевые правила и рекомендации по генерации:
-1.  **Имена переменных:** При определении имен переменных (например, в `variableToStore`, `variableName`, `resultVariableName`) **НЕ ИСПОЛЬЗУЙ** фигурные скобки `{{}}`. Имена должны быть строками в camelCase или snake_case. Платформа Nodera будет использовать эти имена для создания плейсхолдеров вида `{{{{имя_переменной}}}}` при их использовании в текстовых полях.
-2.  **Множественные команды/потоки:** Для разных команд (например, "/start", "/help") создавай свой узел "startNode". Располагай начальные узлы разных потоков на расстоянии по горизонтали (шаг X ~600-800). Первый "startNode" на (x: 250, y: 50).
-3.  **Расположение узлов в потоке:** Узлы одного потока располагай преимущественно вертикально вниз (шаг Y ~150-200). Для ветвлений (после "conditionNode") ветки "Да"/"Нет" располагай по бокам от основной оси (сдвиг X ~ +/-250).
+1.  **Имена переменных:** При определении имен переменных (например, в `variableToStore`, `variableName`, `resultVariableName`, `listVariableName`) **НЕ ИСПОЛЬЗУЙ** фигурные скобки `{{}}`. Имена должны быть строками в camelCase или snake_case. Платформа Nodera будет использовать эти имена для создания плейсхолдеров вида `{{{{имя_переменной}}}}` при их использовании в текстовых полях.
+2.  **Множественные команды/потоки:** Для разных команд (например, "/start", "/help") создавай свой узел "startNode". Располагай начальные узлы разных потоков на расстоянии по горизонтали (шаг X ~600-800). Первый "startNode" обычно на (x: 250, y: 50).
+3.  **Расположение узлов в потоке:** Узлы одного логического потока располагай преимущественно вертикально вниз (шаг Y ~150-200). Для ветвлений (после "conditionNode") узлы веток "Да"/"Нет" располагай по бокам от основной оси (сдвиг X ~ +/-250).
 4.  **ID узлов и связей:** Уникальные, строковые, латиницей, без пробелов (можно `_` или `-`). Осмысленные.
 5.  **Метки узлов (`label`):** Обязательны. Краткие, понятные, на русском, отражающие суть.
 6.  **Узел "messageNode":** `messageText` может содержать `{{{{переменная}}}}`. Кнопки в `data.buttons`: `{{{{ "id": "btn_id", "text": "Текст", "callback_data": "cb_data" }}}}`. Связь от кнопки: `sourceHandle: "btn-out-ID_КНОПКИ"`. Без кнопок: `sourceHandle: "message_output_main"`.
-7.  **Узел "conditionNode":** `conditionType`: "variable_check" или "user_reply". Для "variable_check": `variableName` (без `{{}}`), `operator`, `valueToCompare` (строка, даже если число; может содержать `{{{{переменная}}}}`). Для "user_reply": `replyOperator`, `replyValue`. Выходы: `sourceHandle: "true_output"` и `sourceHandle: "false_output"`.
-8.  **Плейсхолдеры:** Используй `{{{{имя_переменной}}}}` (включая `{{{{_flow_user_id_}}}}`) для подстановки значений в поля `messageText`, `url`, `valueToSet`, `storageKey` и т.д.
-9.  **JSON в строках:** Для `headers` и `body` узла "apiCallNode", а также для `valueField` узла "arrayManipulationNode" при операции "create_overwrite_list", значения должны быть строками, содержащими валидный JSON. Например, `headers: "{{\\"Content-Type\\":\\"application/json\\"}}"`.
-10. **Узел "arrayManipulationNode":** В `data` должны быть `listVariableName` и `operation`. В зависимости от операции, также `valueField` (для добавляемого элемента или JSON-массива для создания), `indexField` (для операций по индексу), `resultVariableName` (для операций, возвращающих результат).
-11. **Детализация и умолчания:** Чем подробнее запрос, тем лучше. Если неясно, генерируй базовую логику.
-12. **Строго JSON:** Ответ – исключительно JSON-объект.
+7.  **Узел "conditionNode":** `conditionType`: "variable_check" или "user_reply". 
+    - Для "variable_check": `variableName` (без `{{}}`), `operator` (включая "is_empty", "is_not_empty"), `valueToCompare` (строка, даже если число, напр., "18"; может содержать `{{{{переменная}}}}`).
+    - Для "user_reply": `replyOperator` (включая "equals" как синоним "equals_text"), `replyValue`. 
+    - Выходы: `sourceHandle: "true_output"` и `sourceHandle: "false_output"`.
+8.  **Плейсхолдеры:** Используй `{{{{имя_переменной}}}}` (включая `{{{{_flow_user_id_}}}}`) для подстановки значений в поля `messageText`, `url`, `valueToSet`, `storageKey`, `valueField` (для arrayManipulationNode) и т.д.
+9.  **JSON в строках:** Для `headers` и `body` ("apiCallNode"), и `valueField` ("arrayManipulationNode" при `operation: "create_overwrite_list"`) значения должны быть строками с валидным JSON. Например, `headers: "{{\\"Content-Type\\":\\"application/json\\"}}"`.
+10. **Узел "timerNode":** `delayValue` (число), `delayUnit` ("seconds", "minutes", "hours", "days"), `timerId` (опционально, строка). Выходной порт `timer_elapsed_output` используется для действий *после* срабатывания таймера. Действия *сразу после* установки таймера должны быть в узлах *перед* `TimerNode` или по другому выходу (если будет добавлен).
+11. **Узел "arrayManipulationNode":** В `data` обязательны `listVariableName` (без `{{}}`) и `operation`. В зависимости от операции, также `valueField` (добавляемый элемент или JSON-строка массива для создания/перезаписи), `indexField` (индекс, может быть плейсхолдером), `resultVariableName` (для операций, возвращающих результат, без `{{}}`).
+12. **Детализация и умолчания:** Чем подробнее запрос, тем лучше. Если неясно, генерируй базовую логику.
+13. **Строго JSON:** Ответ – исключительно JSON-объект.
 
 Текущий запрос пользователя: "{user_prompt}"
 Сгенерируй JSON-структуру для этого запроса.
@@ -212,7 +216,7 @@ NODE_TYPE_DESCRIPTIONS = f"""
     - `command`: (string) Команда запуска (напр., "/start"). Обязательно с "/".
   - Выходные порты (sourceHandle): `start_output`.
 
-- "messageNode": Отправка сообщения. Может иметь inline-кнопки.
+- "messageNode": Отправка сообщения пользователю. Может иметь inline-кнопки.
   - data: {{{{ "label": "Сообщение", "messageText": "Текст, можно с {{{{переменной}}}}.", "buttons": [{{{{ "id": "button1_id", "text": "Кнопка", "callback_data": "action1" }}}}] }}}}
     - `messageText`: (string) Текст. Поддерживает плейсхолдеры `{{{{имя_переменной}}}}`.
     - `buttons`: (array, optional) Кнопки: `{{{{ "id": "str_id", "text": "str_text", "callback_data": "str_cb" }}}}`.
@@ -222,9 +226,9 @@ NODE_TYPE_DESCRIPTIONS = f"""
   - data: {{{{ "label": "Условие", "conditionType": "variable_check", "variableName": "userScore", "operator": "is_number_greater_than", "valueToCompare": "100" }}}}
     - `conditionType`: (string) "variable_check" или "user_reply".
     - `variableName`: (string, opt) Имя переменной для проверки (без `{{}}`).
-    - `operator`: (string, opt) Оператор для переменной.
+    - `operator`: (string, opt) Оператор для переменной (напр., "equals_text", "is_number_greater_than", "is_empty", "is_not_empty").
     - `valueToCompare`: (string, opt) Значение для сравнения (числа строкой, напр., "100"). Можно плейсхолдеры.
-    - `replyOperator`: (string, opt) Оператор для callback_data.
+    - `replyOperator`: (string, opt) Оператор для callback_data (напр., "equals_text", "equals").
     - `replyValue`: (string, opt) Ожидаемое callback_data.
   - Входные порты (targetHandle): `condition_input`. Выходные порты (sourceHandle): `true_output`, `false_output`.
 
@@ -244,7 +248,7 @@ NODE_TYPE_DESCRIPTIONS = f"""
 - "extractDataNode": Извлечение данных из JSON (в переменной) по JSONPath.
   - data: {{{{ "label": "Извлечь JSON", "inputVariable": "jsonSourceVar", "mappings": [{{{{ "path": "user.profile.name", "variableName": "extractedName" }}}}] }}}}
     - `inputVariable`: (string) Имя переменной с JSON (без `{{}}`).
-    - `mappings`: (array) Правила: `{{{{ "path": "JSONPath_expr", "variableName": "имя_новой_переменной_без_{{}}" }}}}`.
+    - `mappings`: (array) Правила: `{{{{ "path": "JSONPath_выражение", "variableName": "имя_новой_переменной_без_{{}}" }}}}`.
   - Входные порты (targetHandle): `extract_input`. Выходные порты (sourceHandle): `extract_output`.
 
 - "setVariableNode": Установка/обновление значения переменной.
@@ -271,24 +275,20 @@ NODE_TYPE_DESCRIPTIONS = f"""
     - `affectedRowsVariable`: (string, opt, "execute_dml") Имя переменной для кол-ва строк (без `{{}}`).
   - Входные порты (targetHandle): `db_input`. Выходные порты (sourceHandle): `db_output_success`, `db_output_error`.
 
-- "timerNode": Установка отложенного действия (задержки).
+- "timerNode": Установка отложенного действия.
   - data: {{{{ "label": "Таймер", "delayValue": 5, "delayUnit": "minutes", "timerId": "optional_timer_id" }}}}
-    - `delayValue`: (integer) Значение задержки (например, 10).
-    - `delayUnit`: (string) Единица измерения: "seconds", "minutes", "hours", "days".
-    - `timerId`: (string, optional) Уникальный идентификатор таймера для возможности его отмены/обновления.
+    - `delayValue`: (integer) Значение задержки. `delayUnit`: (string) "seconds", "minutes", "hours", "days".
+    - `timerId`: (string, optional) Уникальный ID таймера.
   - Входные порты (targetHandle): `timer_input`. Выходные порты (sourceHandle): `timer_elapsed_output`.
 
-- "arrayManipulationNode": Операции со списками (массивами), хранящимися в переменных.
+- "arrayManipulationNode": Операции со списками (массивами) в переменных.
   - data: {{{{ "label": "Операции со списком", "listVariableName": "myArray", "operation": "append_item", "valueField": "новый элемент", "indexField": 0, "resultVariableName": "operationResult" }}}}
-    - `listVariableName`: (string) Имя переменной, содержащей список (без `{{}}`).
-    - `operation`: (string) Тип операции: "create_overwrite_list", "append_item", "prepend_item", "remove_by_index", "remove_by_value", "get_by_index", "get_length", "clear_list", "check_exists".
-    - `valueField`: (any, optional) Значение для операций:
-        - "create_overwrite_list": JSON-строка массива (напр., `"[1, \\"два\\", {{{{var3}}}}]"`). Если пусто, создается пустой список.
-        - "append_item", "prepend_item": Добавляемый элемент (строка, число, JSON-строка). Может содержать плейсхолдеры.
-        - "remove_by_value", "check_exists": Искомый элемент. Может содержать плейсхолдеры.
-    - `indexField`: (string|number, optional) Индекс для "remove_by_index", "get_by_index" (0-based). Может быть числом или строкой с плейсхолдером.
-    - `resultVariableName`: (string, optional) Имя переменной (без `{{}}`) для сохранения результата операций "get_by_index", "get_length", "check_exists".
-  - Входные порты (targetHandle): `array_input`. Выходные порты (sourceHandle): `output_next`. (Опционально `output_error` для неудачных операций с индексом).
+    - `listVariableName`: (string) Имя переменной-списка (без `{{}}`).
+    - `operation`: (string) Тип: "create_overwrite_list", "append_item", "prepend_item", "remove_by_index", "remove_by_value", "get_by_index", "get_length", "clear_list", "check_exists".
+    - `valueField`: (any, optional) Значение для операций (JSON-массив для create, элемент для append/prepend/remove_by_value/check_exists). Может содержать плейсхолдеры.
+    - `indexField`: (string|number, optional) Индекс для операций по индексу (0-based). Может быть плейсхолдером.
+    - `resultVariableName`: (string, optional) Имя переменной для результата (get_by_index, get_length, check_exists) (без `{{}}`).
+  - Входные порты (targetHandle): `array_input`. Выходные порты (sourceHandle): `output_next`.
 """
 
 ALLOWED_NODE_TYPES = [
